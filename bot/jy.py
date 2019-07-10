@@ -4,6 +4,8 @@ import slack
 import json
 import logging
 import yaml
+import click
+import sys
 
 
 """
@@ -32,8 +34,8 @@ class Session:
     def __init__(self):
         self.logger = logging.getLogger('session')
     # end def __init__
-    
-    def open(self,token):
+
+    def open(self, token):
         self.rtm_client = slack.RTMClient(token=token)
         self.rtm_client.start()
     # end def open
@@ -45,49 +47,50 @@ class Session:
             text=text,
             thread_ts=thread_ts
         )
-    #end def talk
+    # end def talk
 
 
 class Service:
     """
     """
+
     def __init__(self, content):
         self.logger = logging.getLogger('service')
         self.names = content
-    #end def __init__
+    # end def __init__
 
     def support(self, name):
         if name in self.names:
             return True
         return False
-    #end def support
+    # end def support
 
     def start(self, name):
         self.logger.info('service start %r', name)
         self._os_command('start', name)
-    #end def start
+    # end def start
 
     def stop(self, name):
         self.logger.info('service stop %r', name)
         self._os_command('stop', name)
 
-    #end def start
+    # end def start
 
     def restart(self, name):
         self.logger.info('service restart %r', name)
         self._os_command('restart', name)
 
-    #end
+    # end
 
     def status(self, name):
         self.logger.info('service status %r', name)
         self._os_command('status', name)
-    #end def status
+    # end def status
 
     def _os_command(self, cmd, name):
-        os.system("/usr/bin/systemctl %r %r" % (cmd, name)) 
+        os.system("/usr/bin/systemctl %r %r" % (cmd, name))
         pass
-    #end def _os_command
+    # end def _os_command
 
 # end class Serivice
 
@@ -96,15 +99,16 @@ class Command:
     """
     提供一个基类，规范命令接口
     """
-    def __init__(self, command_text): 
+
+    def __init__(self, command_text):
         self.command_text = command_text
         self.logger = logging.getLogger('command')
-    #end def __init__
+    # end def __init__
 
-    def execute(self,callback):
+    def execute(self, callback):
         pass
-    # end def execute 
-#end class Command
+    # end def execute
+# end class Command
 
 
 class ReplyHelp(Command):
@@ -112,34 +116,35 @@ class ReplyHelp(Command):
        响应hello的命令
     """
 
-    def __init__(self, command_text): 
+    def __init__(self, command_text):
         Command.__init__(self, command_text)
-    #end def __init__
+    # end def __init__
 
-    def execute(self,callback):
+    def execute(self, callback):
         global services
         help_info = ','.join(services.names)
-        callback(help_info) 
-    # end def execute 
-#end class ReplyHello
+        callback(help_info)
+    # end def execute
+# end class ReplyHello
 
 
 class ReplyService(Command):
     """
         响应启动的命令
     """
-    def __init__(self,command_text): 
-        Command.__init__(self,command_text)
-    #end def __init__
+
+    def __init__(self, command_text):
+        Command.__init__(self, command_text)
+    # end def __init__
 
     def execute(self, callback):
         global services
         parts = self.command_text.split(' ')
         method = {
-            'start' : services.start,
-            'stop' : services.stop,
-            'status' : services.status,
-            'restart' : services.restart
+            'start': services.start,
+            'stop': services.stop,
+            'status': services.status,
+            'restart': services.restart
         }
         if parts[0] in method:
             if not services.support(parts[1]):
@@ -150,10 +155,9 @@ class ReplyService(Command):
             callback('finish ' + self.command_text)
         else:
             callback('no method support ' + self.command_text)
-            
-       
-    # end def execute 
-#end class ReplyService
+
+    # end def execute
+# end class ReplyService
 
 
 class CommandMapping:
@@ -163,31 +167,30 @@ class CommandMapping:
 
     def __init__(self):
         self.mapping = {
-            'help' : ReplyHelp,
-            'start' : ReplyService,
-            'stop' : ReplyService,
-            'status' : ReplyService,
-            'restart' : ReplyService
+            'help': ReplyHelp,
+            'start': ReplyService,
+            'stop': ReplyService,
+            'status': ReplyService,
+            'restart': ReplyService
         }
     # end def __init__
-
 
     def handleCommand(self, cmdKey, message, callback):
         cmdClass = self.mapping[cmdKey]
         if cmdClass:
             cmd = cmdClass(command_text=message)
-            cmd.execute(callback)	
+            cmd.execute(callback)
     # end def handleCommand
 
     def receive_message(self, data, callback):
         for cmdKey in self.mapping.keys():
             if 'client_msg_id' in data:
                 text = data['text']
-                offset=text.find('>')
-                text = text[offset+1:].strip()
+                offset = text.find('>')
+                text = text[offset + 1:].strip()
                 if text.startswith(cmdKey):
-                    self.handleCommand(cmdKey,text, callback)
-    #end def receive
+                    self.handleCommand(cmdKey, text, callback)
+    # end def receive
 # end class CommandMapping
 
 
@@ -216,33 +219,34 @@ def received_message(**payload):
             user = data['user']
 
         session.talk(reply, channel_id, thread_ts, user)
-    #end def callback
+    # end def callback
 
     mapping = CommandMapping()
     mapping.receive_message(data, callback)
-        
+
 # end def received_message
 
-
-def main():
+@click.command()
+def main(args=None):
     global session
     global services
-    logging.basicConfig(filename='/var/run/log/jy-bot.log', level=logging.DEBUG)
-    token=''
-    filepath='/usr/local/etc/jy-bot/config.yml' 
+    logging.basicConfig(
+        filename='/var/run/log/jy-bot.log',
+        level=logging.DEBUG)
+    token = ''
+    filepath = '/usr/local/etc/jy-bot/config.yml'
     if os.path.isfile(filepath):
         with open(filepath, 'r') as f:
             cfg = yaml.load(f, Loader=yaml.FullLoader)
             token = cfg['token']
             services = Service(cfg['services'])
-    
-    if '' == token :
+
+    if '' == token:
         token = os.environ['SLACK_API_TOKEN']
-    
+
     session = Session()
     session.open(token)
-
+    return 0
 
 if __name__ == '__main__':
-    main()
-
+    sys.exit(main())
